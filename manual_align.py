@@ -5,7 +5,7 @@ Description: This script aligns images using a homography matrix
              computed from and user-selected key point pairs.
 Author:      Nico Chou
 Created:     7/23/2025
-Last Edited: 8/4/2025
+Last Edited: 8/5/2025
 ========================================
 """
 
@@ -52,7 +52,13 @@ def load_images() -> list:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         filename = os.path.basename(file_path)
         images.append(ImageData(image, filename))
-    
+
+    if not images:
+        print(
+            "No valid images were loaded. Please check your files and try "
+            "again."
+        )
+
     return images
 
 
@@ -189,6 +195,7 @@ def get_template_window(
     Returns:
         matplotlib.figure.Figure: The annotated figure.
     """
+    # Scale image and display using matplotlib with scroll zoom enabled
     image_scaled = cv2.resize(image_data.image, None, fx=scale, fy=scale)
     fig, ax = plt.subplots(figsize=(5, 4))
     fig.subplots_adjust(left=0, right=1, top=0.93, bottom=0)
@@ -215,44 +222,98 @@ def get_template_window(
     return fig    
 
 
+def user_input(stack: list) -> tuple:
+    """
+    Prompts the user to select a template image filename from the 
+    provided stack and specify the number of keypoint pairs to collect.
+
+    Args:
+        stack (list): List of ImageData objects which should contain 
+                      the template image
+
+    Returns:
+        tuple: (template_index, num_points)
+            - template_index (int): Index of the selected template 
+              image in the stack, or -1 if the user quits.
+            - num_points (int): Number of keypoint pairs to collect 
+              (>=4), or -1 if the user quits.
+    """
+    # Collect the index of the template image in the stack
+    template_index = None
+    while True:
+        template = input(
+            'Please enter the filename of the template image (this should '
+            'match one of the files you previously selected) or type "quit" '
+            'to end the program:\n'
+        )
+        if template.strip() == "quit":
+            return (-1, -1)
+        for i, image_data in enumerate(stack):
+            if image_data.filename == template:
+                template_index = i
+                break
+        if template_index is None:
+            print(f"Could not find {template} among the selected files.\n")
+        else:
+            break
+    
+    # Collect the number of keypoint pairs to collect
+    num_points = None
+    while True:
+        num_points = input(
+            'Enter the number of keypoint pairs to collect (must be >= 4) or '
+            'type "quit" to end the program:\n'
+        ).strip()
+        if num_points == "quit":
+            return (-1, -1)
+        if num_points.isdigit():
+            num_points = int(num_points)
+            if num_points >= 4:
+                break
+            else:
+                print("Number of keypoints must be >= 4.\n")
+        else:
+            print("Please enter a valid integer.\n")
+
+    return template_index, num_points
+
+
 def align_stack() -> list:
     """
-    Loads images, prompts for a template image, collects keypoints, 
-    aligns images to the template and exports.
+    Loads images, prompts for a template image and number of keypoints, 
+    collects keypoints, aligns images to the template and exports.
 
     Returns:
         list: The aligned images as ImageData objects.
     """
     stack = load_images()
-    template = input("Enter the filename of the template image (this should "
-                     "match one of the files you previously selected):\n")
+    template_index, num_points = user_input(stack)
+
+    # Check if user chose to close the program
+    if template_index == -1:
+        return
+    
     kpts_stack = []
     aligned_images = []
     
-    # Find the template image and move it to the first index
-    template_index = None
-    for i, image_data in enumerate(stack):
-        if image_data.filename == template:
-            template_index = i
-    if template_index is None:
-        raise FileNotFoundError(
-            f"Could not find {template} among the selected files"
-        )
+    # Move the template image to the first index
     if template_index != 0:
         template_image = stack.pop(template_index)
         stack.insert(0, template_image)
 
     # Collect keypoints and export aligned images
     for i, image_data in enumerate(stack):
-        # Only display the key after the first iteration
         if i == 0:
-            keypoints = get_keypoints(image_data, 5)
+            # No need to align the template image
+            keypoints = get_keypoints(image_data, num_points)
             kpts_stack.append(keypoints)
             aligned_images.append(image_data)
         else:
+            # Only display the key after the first iteration
             tmp_fig = get_template_window(stack[0], kpts_stack[0])
-            keypoints = get_keypoints(image_data, 5, tmp_fig)
+            keypoints = get_keypoints(image_data, num_points, tmp_fig)
             kpts_stack.append(keypoints)
+            # Align the image with the template and export
             keypairs = [kpts_stack[i], kpts_stack[0]]
             aligned_image_data = transform_image(image_data, keypairs)
             aligned_images.append(aligned_image_data)
@@ -275,6 +336,7 @@ def export_image(image_data: ImageData):
 
 def main():
     align_stack()
+
 
 if __name__ == "__main__":
     main()

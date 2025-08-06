@@ -148,35 +148,6 @@ def get_keypoints(
     return orig_points
 
 
-def transform_image(
-        image_data: ImageData, 
-        keypairs: list
-    ) -> ImageData:
-    """
-    Applies a homography transformation to an image based on given 
-    keypoint pairs.
-
-    Args:
-        image_data (ImageData): Image to be transformed.
-        keypairs (list): A list of numpy arrays with format 
-                                [src_points, dst_points].
-
-    Returns:
-        ImageData: The aligned/transformed image as an ImageData object.
-    """
-    # Compute the homography matrix
-    (H, mask) = cv2.findHomography(
-        keypairs[0], 
-        keypairs[1], 
-        method=0
-    )
-    # Use the homography matrix to transform the image
-    (h, w) = image_data.image.shape[:2]
-    aligned = cv2.warpPerspective(image_data.image, H, (w, h))
-    aligned_image_data = ImageData(aligned, f"aligned_{image_data.filename}")
-    return aligned_image_data
-
-
 def get_template_window(
         image_data: ImageData, 
         keypoints: np.ndarray, 
@@ -219,7 +190,38 @@ def get_template_window(
             va='center', 
             weight='bold'
         )
-    return fig    
+
+    return fig
+
+
+def transform_image(
+        image_data: ImageData, 
+        keypairs: list
+    ) -> ImageData:
+    """
+    Applies a homography transformation to an image based on given 
+    keypoint pairs.
+
+    Args:
+        image_data (ImageData): Image to be transformed.
+        keypairs (list): A list of numpy arrays with format 
+                                [src_points, dst_points].
+
+    Returns:
+        ImageData: The aligned/transformed image as an ImageData object.
+    """
+    # Compute the homography matrix
+    (H, mask) = cv2.findHomography(
+        keypairs[0], 
+        keypairs[1], 
+        method=0
+    )
+    # Use the homography matrix to transform the image
+    (h, w) = image_data.image.shape[:2]
+    aligned = cv2.warpPerspective(image_data.image, H, (w, h))
+    aligned_image_data = ImageData(aligned, f"aligned_{image_data.filename}")
+    
+    return aligned_image_data
 
 
 def user_input(stack: list) -> tuple:
@@ -278,6 +280,18 @@ def user_input(stack: list) -> tuple:
     return template_index, num_points
 
 
+def export_image(image_data: ImageData):
+    """
+    Saves the image and filename specified in an ImageData object to 
+    disk.
+
+    Args:
+        image_data (ImageData): ImageData object containing the image.
+    """
+    image_bgr = cv2.cvtColor(image_data.image, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(image_data.filename, image_bgr)
+
+
 def align_stack() -> list:
     """
     Loads images, prompts for a template image and number of keypoints, 
@@ -320,18 +334,6 @@ def align_stack() -> list:
             export_image(aligned_image_data)
 
     return aligned_images
-
-
-def export_image(image_data: ImageData):
-    """
-    Saves the image and filename specified in an ImageData object to 
-    disk.
-
-    Args:
-        image_data (ImageData): ImageData object containing the image.
-    """
-    image_bgr = cv2.cvtColor(image_data.image, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(image_data.filename, image_bgr)
 
 
 def main():

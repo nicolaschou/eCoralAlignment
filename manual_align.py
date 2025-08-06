@@ -20,18 +20,33 @@ import os
 
 
 class ImageData:
+    """
+    A container class for storing an image and its filename.
+
+    Attributes:
+        image (np.ndarray): The image data as a numpy array.
+        filename (str): The name of the image file.
+    """
     def __init__(self, image: np.ndarray, filename: str):
+        """
+        Initializes an ImageData object.
+
+        Args:
+            image (np.ndarray): The image data as a numpy array.
+            filename (str): The name of the image file.
+        """
         self.image = image
         self.filename = filename
 
 
 def load_images() -> list:
     """
-    Opens a file dialog for the user to select multiple image files.
+    Opens a file dialog for the user to select multiple image files and loads 
+    the images as ImageData objects into a list.
 
     Returns:
-        list: A list of ImageData objects containing the images 
-              selected by the user.
+        list: A list of ImageData objects containing the images in RGB 
+              format selected by the user.
     """
     # Create a hidden root window
     root = tk.Tk()
@@ -49,6 +64,7 @@ def load_images() -> list:
         if image is None:
             print(f"Warning: Could not read {file_path}")
             continue
+        # Convert to RGB
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         filename = os.path.basename(file_path)
         images.append(ImageData(image, filename))
@@ -220,7 +236,7 @@ def transform_image(
     (h, w) = image_data.image.shape[:2]
     aligned = cv2.warpPerspective(image_data.image, H, (w, h))
     aligned_image_data = ImageData(aligned, f"aligned_{image_data.filename}")
-    
+
     return aligned_image_data
 
 

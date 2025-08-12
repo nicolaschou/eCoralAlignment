@@ -5,9 +5,10 @@ Description: This script aligns images using a homography matrix
              computed from and user-selected key point pairs.
 Author:      Nico Chou
 Created:     7/23/2025
-Last Edited: 8/5/2025
+Last Edited: 8/11/2025
 ========================================
 """
+
 
 import numpy as np
 import cv2
@@ -148,7 +149,8 @@ def get_keypoints(
                 fig.canvas.mpl_disconnect(cid_click)
                 fig.canvas.mpl_disconnect(cid_key)
                 plt.close(fig)
-                plt.close(tmp_fig)
+                if tmp_fig is not None:
+                    plt.close(tmp_fig)
             else:
                 print(f"Click {num_points} point{plural} first")
 
@@ -212,6 +214,8 @@ def get_template_window(
 
 def transform_image(
         image_data: ImageData, 
+        tmp_h: int, 
+        tmp_w: int, 
         keypairs: list
     ) -> ImageData:
     """
@@ -220,6 +224,8 @@ def transform_image(
 
     Args:
         image_data (ImageData): Image to be transformed.
+        tmp_h (int): Height of the template image in pixels
+        tmp_w (int): Width of the template image in pixels
         keypairs (list): A list of numpy arrays with format 
                                 [src_points, dst_points].
 
@@ -234,7 +240,7 @@ def transform_image(
     )
     # Use the homography matrix to transform the image
     (h, w) = image_data.image.shape[:2]
-    aligned = cv2.warpPerspective(image_data.image, H, (w, h))
+    aligned = cv2.warpPerspective(image_data.image, H, (tmp_w, tmp_h))
     aligned_image_data = ImageData(aligned, f"aligned_{image_data.filename}")
 
     return aligned_image_data
@@ -345,7 +351,11 @@ def align_stack() -> list:
             kpts_stack.append(keypoints)
             # Align the image with the template and export
             keypairs = [kpts_stack[i], kpts_stack[0]]
-            aligned_image_data = transform_image(image_data, keypairs)
+            aligned_image_data = transform_image(
+                image_data, 
+                stack[0].image.shape[0], 
+                stack[0].image.shape[1], 
+                keypairs)
             aligned_images.append(aligned_image_data)
             export_image(aligned_image_data)
 

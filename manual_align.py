@@ -2,10 +2,8 @@
 ========================================
 File:        manual_align.py
 Description: This script aligns images using a homography matrix 
-             computed from and user-selected key point pairs.
+             computed from user-selected keypoint pairs.
 Author:      Nico Chou
-Created:     7/23/2025
-Last Edited: 8/11/2025
 ========================================
 """
 
@@ -18,6 +16,7 @@ from mpl_interactions import zoom_factory
 import matplotlib
 import matplotlib.pyplot as plt
 import os
+import sys
 
 
 class ImageData:
@@ -28,6 +27,7 @@ class ImageData:
         image (np.ndarray): The image data as a numpy array.
         filename (str): The name of the image file.
     """
+
     def __init__(self, image: np.ndarray, filename: str):
         """
         Initializes an ImageData object.
@@ -80,11 +80,11 @@ def load_images() -> list:
 
 
 def get_keypoints(
-        image_data: ImageData, 
-        num_points: int, 
-        tmp_fig=None, 
-        scale=0.3
-    ) -> np.ndarray:
+    image_data: ImageData,
+    num_points: int,
+    tmp_fig=None,
+    scale=0.3
+) -> np.ndarray:
     """
     Displays an image and collects a specified number of (x, y) points 
     clicked by the user.
@@ -92,8 +92,8 @@ def get_keypoints(
     Args:
         image_data (ImageData): ImageData object for the image.
         num_points (int): Number of points to collect.
-        tmp_fig (matplotlib.figure.Figure): template with the first 
-                                            points chosen in the stack.
+        tmp_fig (matplotlib.figure.Figure): Figure containing the 
+                                            template and its keypoints.
         scale (float): How large the displayed image is relative to the 
                        original.
 
@@ -113,9 +113,9 @@ def get_keypoints(
         f"Click {num_points} keypoint{plural} on the image "
         f"({image_data.filename})"
     )
-    
-    points = [] # stores keypoint coordinates
-    dots = [] # stores the Line2D dot objects
+
+    points = []  # stores keypoint coordinates
+    dots = []  # stores the Line2D dot objects
 
     # Mouse click callback
     def onclick(event):
@@ -123,13 +123,13 @@ def get_keypoints(
         toolbar = event.canvas.toolbar
         if toolbar is not None and toolbar.mode != '':
             return
-        
+
         # Plot dot at last mouse position when no tool is selected
         if event.xdata is not None and event.ydata is not None:
-            if len(points) < num_points: # only record up to num_points
+            if len(points) < num_points:  # only record up to num_points
                 x, y = event.xdata, event.ydata
                 points.append((x, y))
-                dot, = ax.plot(x, y, 'ro', ms=3) # unpack
+                dot, = ax.plot(x, y, 'ro', ms=3)  # unpack
                 dots.append(dot)
                 fig.canvas.draw()
 
@@ -142,7 +142,7 @@ def get_keypoints(
                 dot.remove()
                 points.pop()
                 fig.canvas.draw()
-        
+
         # enter -> close figures (only after all points are collected)
         if event.key == 'enter':
             if len(points) == num_points:
@@ -159,25 +159,31 @@ def get_keypoints(
     cid_key = fig.canvas.mpl_connect('key_press_event', onkey)
     plt.show()
 
-    # Wait until window is closed to return
+    # Wait until window is closed to proceed
     while plt.fignum_exists(fig.number):
         plt.pause(0.1)
+
+    if len(points) < num_points:
+        print("Plot closed before all points were selected. Exiting program.")
+        sys.exit(0)
+
+    # Scale points to original dimensions and return
     orig_points = np.array(points) / scale
     return orig_points
 
 
 def get_template_window(
-        image_data: ImageData, 
-        keypoints: np.ndarray, 
-        scale=0.3
-    ) -> matplotlib.figure.Figure:
+    template_data: ImageData,
+    keypoints: np.ndarray,
+    scale=0.3
+) -> matplotlib.figure.Figure:
     """
     Creates a matplotlib figure displaying a template with annotated 
     keypoints.
 
     Args:
-        image_data (np.ndarray): The template image.
-        keypoints (np.ndarray): Array of ordered points.
+        template_data (ImageData): The template image.
+        keypoints (np.ndarray): Array of keypoints (shape: [N, 2]).
         scale (float): How large the displayed image is relative to the 
                        original.
 
@@ -185,12 +191,12 @@ def get_template_window(
         matplotlib.figure.Figure: The annotated figure.
     """
     # Scale image and display using matplotlib with scroll zoom enabled
-    image_scaled = cv2.resize(image_data.image, None, fx=scale, fy=scale)
+    image_scaled = cv2.resize(template_data.image, None, fx=scale, fy=scale)
     fig, ax = plt.subplots(figsize=(5, 4))
     fig.subplots_adjust(left=0, right=1, top=0.93, bottom=0)
     ax.imshow(image_scaled)
     zoom_factory(ax)
-    ax.set_title(f"Template w/ Keypoints ({image_data.filename})")
+    ax.set_title(f"Template w/ Keypoints ({template_data.filename})")
     ax.axis('off')
 
     # Plot and number points
@@ -199,13 +205,13 @@ def get_template_window(
     ax.plot(scaled_points[:, 0], scaled_points[:, 1], 'ro', ms=6)
     for i, (x, y) in enumerate(scaled_points):
         ax.text(
-            x+text_offset, 
-            y, 
-            str(i+1), 
-            color='orange', 
-            fontsize=10, 
-            ha='center', 
-            va='center', 
+            x + text_offset,
+            y,
+            str(i+1),
+            color='orange',
+            fontsize=10,
+            ha='center',
+            va='center',
             weight='bold'
         )
 
@@ -213,21 +219,19 @@ def get_template_window(
 
 
 def transform_image(
-        image_data: ImageData, 
-        tmp_h: int, 
-        tmp_w: int, 
-        keypairs: list
-    ) -> ImageData:
+    image_data: ImageData,
+    template_data: ImageData,
+    keypairs: list
+) -> ImageData:
     """
     Applies a homography transformation to an image based on given 
     keypoint pairs.
 
     Args:
         image_data (ImageData): Image to be transformed.
-        tmp_h (int): Height of the template image in pixels
-        tmp_w (int): Width of the template image in pixels
-        keypairs (list): A list of numpy arrays with format 
-                                [src_points, dst_points].
+        template_data (ImageData): Destination image.
+        keypairs (list): A list containing two numpy arrays 
+                         [src_points, dst_points].
 
     Returns:
         ImageData: The aligned/transformed image as an ImageData object.
@@ -239,9 +243,12 @@ def transform_image(
         method=0
     )
     # Use the homography matrix to transform the image
-    (h, w) = image_data.image.shape[:2]
-    aligned = cv2.warpPerspective(image_data.image, H, (tmp_w, tmp_h))
-    aligned_image_data = ImageData(aligned, f"aligned_{image_data.filename}")
+    (h, w) = template_data.image.shape[:2]
+    aligned = cv2.warpPerspective(image_data.image, H, (w, h))
+    aligned_image_data = ImageData(
+        aligned,
+        f"aligned_{image_data.filename}"
+    )
 
     return aligned_image_data
 
@@ -249,18 +256,19 @@ def transform_image(
 def user_input(stack: list) -> tuple:
     """
     Prompts the user to select a template image filename from the 
-    provided stack and specify the number of keypoint pairs to collect.
+    provided stack and specify the number of keypoints to collect per 
+    image.
 
     Args:
         stack (list): List of ImageData objects which should contain 
-                      the template image
+                      the template image.
 
     Returns:
         tuple: (template_index, num_points)
             - template_index (int): Index of the selected template 
               image in the stack, or -1 if the user quits.
-            - num_points (int): Number of keypoint pairs to collect 
-              (>=4), or -1 if the user quits.
+            - num_points (int): Number of keypoints to collect per 
+              image (>=4), or -1 if the user quits.
     """
     # Collect the index of the template image in the stack
     template_index = None
@@ -280,13 +288,13 @@ def user_input(stack: list) -> tuple:
             print(f"Could not find {template} among the selected files.\n")
         else:
             break
-    
+
     # Collect the number of keypoint pairs to collect
     num_points = None
     while True:
         num_points = input(
-            'Enter the number of keypoint pairs to collect (must be >= 4) or '
-            'type "quit" to end the program:\n'
+            'Enter the number of keypoints to collect per image (must be >= '
+            '4) or type "quit" to end the program:\n'
         ).strip()
         if num_points == "quit":
             return (-1, -1)
@@ -324,18 +332,18 @@ def align_stack() -> list:
     """
     stack = load_images()
     template_index, num_points = user_input(stack)
+    kpts_stack = []
+    aligned_images = []
 
     # Check if user chose to close the program
     if template_index == -1:
-        return
-    
-    kpts_stack = []
-    aligned_images = []
-    
+        sys.exit(0)
+
     # Move the template image to the first index
     if template_index != 0:
         template_image = stack.pop(template_index)
         stack.insert(0, template_image)
+    template_data = stack[0]
 
     # Collect keypoints and export aligned images
     for i, image_data in enumerate(stack):
@@ -345,17 +353,17 @@ def align_stack() -> list:
             kpts_stack.append(keypoints)
             aligned_images.append(image_data)
         else:
-            # Only display the key after the first iteration
-            tmp_fig = get_template_window(stack[0], kpts_stack[0])
+            # Only display the template after the first iteration
+            tmp_fig = get_template_window(template_data, kpts_stack[0])
             keypoints = get_keypoints(image_data, num_points, tmp_fig)
             kpts_stack.append(keypoints)
             # Align the image with the template and export
             keypairs = [kpts_stack[i], kpts_stack[0]]
             aligned_image_data = transform_image(
-                image_data, 
-                stack[0].image.shape[0], 
-                stack[0].image.shape[1], 
-                keypairs)
+                image_data,
+                template_data,
+                keypairs
+            )
             aligned_images.append(aligned_image_data)
             export_image(aligned_image_data)
 

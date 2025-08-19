@@ -158,11 +158,7 @@ def get_keypoints(
     cid_click = fig.canvas.mpl_connect('button_press_event', onclick)
     cid_key = fig.canvas.mpl_connect('key_press_event', onkey)
     plt.show()
-
-    # Wait until window is closed to proceed
-    while plt.fignum_exists(fig.number):
-        plt.pause(0.1)
-
+    
     if len(points) < num_points:
         print("Plot closed before all points were selected. Exiting program.")
         sys.exit(0)

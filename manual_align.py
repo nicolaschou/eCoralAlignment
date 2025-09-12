@@ -43,7 +43,8 @@ class ImageData:
 def load_images() -> list:
     """
     Opens a file dialog for the user to select multiple image files and loads 
-    the images as ImageData objects into a list.
+    the images as ImageData objects into a list. Images are added to the list 
+    in the order they are selected in the file dialog.
 
     Returns:
         list: A list of ImageData objects containing the images in RGB 
@@ -70,12 +71,6 @@ def load_images() -> list:
         filename = os.path.basename(file_path)
         images.append(ImageData(image, filename))
 
-    if not images:
-        print(
-            "No valid images were loaded. Please check your files and try "
-            "again."
-        )
-
     return images
 
 
@@ -101,7 +96,7 @@ def get_keypoints(
         np.ndarray: Array of shape (num_points, 2) with clicked (x, y) 
                     coordinates in the original dimensions.
     """
-    plural = 's' if num_points != 1 else ''
+    plural = "s" if num_points != 1 else ""
 
     # Plot resized image with zoom functionality
     image_scaled = cv2.resize(image_data.image, None, fx=scale, fy=scale)
@@ -121,7 +116,7 @@ def get_keypoints(
     def onclick(event):
         # If a tool is selected, do nothing
         toolbar = event.canvas.toolbar
-        if toolbar is not None and toolbar.mode != '':
+        if toolbar is not None and toolbar.mode != "":
             return
 
         # Plot dot at last mouse position when no tool is selected
@@ -129,14 +124,14 @@ def get_keypoints(
             if len(points) < num_points:  # only record up to num_points
                 x, y = event.xdata, event.ydata
                 points.append((x, y))
-                dot, = ax.plot(x, y, 'ro', ms=3)  # unpack
+                dot, = ax.plot(x, y, "ro", ms=3)  # unpack
                 dots.append(dot)
                 fig.canvas.draw()
 
     # Key press callback
     def onkey(event):
         # backspace -> remove last clicked point
-        if event.key == 'backspace':
+        if event.key == "backspace":
             if dots:
                 dot = dots.pop()
                 dot.remove()
@@ -144,7 +139,7 @@ def get_keypoints(
                 fig.canvas.draw()
 
         # enter -> close figures (only after all points are collected)
-        if event.key == 'enter':
+        if event.key == "enter":
             if len(points) == num_points:
                 fig.canvas.mpl_disconnect(cid_click)
                 fig.canvas.mpl_disconnect(cid_key)
@@ -155,13 +150,9 @@ def get_keypoints(
                 print(f"Click {num_points} point{plural} first")
 
     # Connect the event handler and display the image
-    cid_click = fig.canvas.mpl_connect('button_press_event', onclick)
-    cid_key = fig.canvas.mpl_connect('key_press_event', onkey)
+    cid_click = fig.canvas.mpl_connect("button_press_event", onclick)
+    cid_key = fig.canvas.mpl_connect("key_press_event", onkey)
     plt.show()
-    
-    if len(points) < num_points:
-        print("Plot closed before all points were selected. Exiting program.")
-        sys.exit(0)
 
     # Scale points to original dimensions and return
     orig_points = np.array(points) / scale
@@ -193,22 +184,22 @@ def get_template_window(
     ax.imshow(image_scaled)
     zoom_factory(ax)
     ax.set_title(f"Template w/ Keypoints ({template_data.filename})")
-    ax.axis('off')
+    ax.axis("off")
 
     # Plot and number points
     scaled_points = keypoints * scale
     text_offset = image_scaled.shape[1] / 40
-    ax.plot(scaled_points[:, 0], scaled_points[:, 1], 'ro', ms=6)
+    ax.plot(scaled_points[:, 0], scaled_points[:, 1], "ro", ms=6)
     for i, (x, y) in enumerate(scaled_points):
         ax.text(
             x + text_offset,
             y,
             str(i+1),
-            color='orange',
+            color="orange",
             fontsize=10,
-            ha='center',
-            va='center',
-            weight='bold'
+            ha="center",
+            va="center",
+            weight="bold"
         )
 
     return fig
@@ -308,7 +299,7 @@ def user_input(stack: list) -> tuple:
 
 def export_image(image_data: ImageData):
     """
-    Saves the image and filename specified in an ImageData object to 
+    Exports the image and filename specified in an ImageData object to 
     disk.
 
     Args:
@@ -327,6 +318,13 @@ def align_stack() -> list:
         list: The aligned images as ImageData objects.
     """
     stack = load_images()
+    if not stack:
+        print(
+            "No valid images were loaded. Please check your files and try "
+            "again."
+        )
+        sys.exit(0)
+    
     template_index, num_points = user_input(stack)
     kpts_stack = []
     aligned_images = []
@@ -346,12 +344,24 @@ def align_stack() -> list:
         if i == 0:
             # No need to align the template image
             keypoints = get_keypoints(image_data, num_points)
+            if len(keypoints) < num_points:
+                print(
+                    "Plot closed before all points were selected. " +
+                    "Exiting program."
+                )
+                sys.exit(0)
             kpts_stack.append(keypoints)
             aligned_images.append(image_data)
         else:
             # Only display the template after the first iteration
             tmp_fig = get_template_window(template_data, kpts_stack[0])
             keypoints = get_keypoints(image_data, num_points, tmp_fig)
+            if len(keypoints) < num_points:
+                print(
+                    "Plot closed before all points were selected. " +
+                    "Exiting program."
+                )
+                sys.exit(0)
             kpts_stack.append(keypoints)
             # Align the image with the template and export
             keypairs = [kpts_stack[i], kpts_stack[0]]

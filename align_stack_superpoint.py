@@ -45,7 +45,8 @@ class ImageData:
 def load_images() -> list:
     """
     Opens a file dialog for the user to select multiple image files and loads 
-    the images as ImageData objects into a list.
+    the images as ImageData objects into a list. Images are added to the list 
+    in the order they are selected in the file dialog.
 
     Returns:
         list: A list of ImageData objects containing the images in RGB 
@@ -72,12 +73,6 @@ def load_images() -> list:
         filename = os.path.basename(file_path)
         images.append(ImageData(image, filename))
 
-    if not images:
-        print(
-            "No valid images were loaded. Please check your files and try "
-            "again."
-        )
-
     return images
 
 
@@ -96,7 +91,7 @@ def get_area_coords(
         list: A list of tuples, each containing (x1, x2, y1, y2)  
               coordinates representing the selected rectangular areas.
     """
-    plural = 's' if num_areas != 1 else ''
+    plural = "s" if num_areas != 1 else ""
 
     # Plot image
     fig, ax = plt.subplots(figsize=(9, 7))
@@ -123,8 +118,8 @@ def get_area_coords(
                 (x1, y1),
                 x2-x1,
                 y2-y1,
-                edgecolor='r',
-                facecolor='none'
+                edgecolor="r",
+                facecolor="none"
             )
             boxes.append(box)
             ax.add_patch(box)
@@ -138,13 +133,13 @@ def get_area_coords(
         button=[1],
         minspanx=5,
         minspany=5,
-        spancoords='pixels'
+        spancoords="pixels"
     )
 
     # Key press callback
     def onkey(event):
         # backspace -> remove last collected area
-        if event.key == 'backspace':
+        if event.key == "backspace":
             if areas:
                 box = boxes.pop()
                 box.remove()
@@ -152,7 +147,7 @@ def get_area_coords(
                 fig.canvas.draw()
 
         # enter -> close figure (only after areas are collected)
-        if event.key == 'enter':
+        if event.key == "enter":
             if len(areas) == num_areas:
                 rect_selector.set_active(False)
                 fig.canvas.mpl_disconnect(cid_key)
@@ -161,12 +156,8 @@ def get_area_coords(
                 print(f"Drag {num_areas} area{plural} first")
 
     # Connect the event handler and display the image
-    cid_key = fig.canvas.mpl_connect('key_press_event', onkey)
+    cid_key = fig.canvas.mpl_connect("key_press_event", onkey)
     plt.show()
-
-    if len(areas) < num_areas:
-        print("Plot closed before all areas were selected. Exiting program.")
-        sys.exit(0)
 
     return areas
 
@@ -200,7 +191,7 @@ def pre_process(
     )
     contrasted = clahe.apply(gray)
 
-    # Apply a gaussian blur
+    # Apply a Gaussian blur
     blurred = cv2.GaussianBlur(contrasted, (ksize, ksize), 0)
 
     if debug:
@@ -232,6 +223,7 @@ def match_features(
                                                     detection.
         scale (float, optional): Scale factor for processing and 
                                  matching.
+        ratio (float, optional): Lowe’s ratio-test threshold.
         debug (bool, optional): If True, displays a matplotlib figure 
                                 showing the matched keypoints.
 
@@ -253,14 +245,14 @@ def match_features(
         # Convert image into tensor [1, 1, H, W]
         tensorI = torch.from_numpy(image_p[None, None]).float()
         tensorT = torch.from_numpy(template_p[None, None]).float()
-        resultsI = superpoint({'image': tensorI})
-        resultsT = superpoint({'image': tensorT})
+        resultsI = superpoint({"image": tensorI})
+        resultsT = superpoint({"image": tensorT})
 
     # Extract rescaled keypoints and descriptors
-    kptsI = resultsI['keypoints'][0].cpu().numpy()
-    descI = resultsI['descriptors'][0].cpu().numpy()
-    kptsT = resultsT['keypoints'][0].cpu().numpy()
-    descT = resultsT['descriptors'][0].cpu().numpy()
+    kptsI = resultsI["keypoints"][0].cpu().numpy()
+    descI = resultsI["descriptors"][0].cpu().numpy()
+    kptsT = resultsT["keypoints"][0].cpu().numpy()
+    descT = resultsT["descriptors"][0].cpu().numpy()
 
     bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
     raw_matches = bf.knnMatch(descI, descT, k=2)
@@ -295,11 +287,11 @@ def match_features(
             x2 += wI
 
             # Draw keypoints
-            ax.scatter([x1], [y1], s=10, c='lime', marker='o')
-            ax.scatter([x2], [y2], s=10, c='lime', marker='o')
+            ax.scatter([x1], [y1], s=10, c="lime", marker="o")
+            ax.scatter([x2], [y2], s=10, c="lime", marker="o")
 
             # Draw connecting line
-            ax.plot([x1, x2], [y1, y2], c='red', linewidth=0.3)
+            ax.plot([x1, x2], [y1, y2], c="red", linewidth=0.3)
 
         plt.show()
 
@@ -435,11 +427,53 @@ def align_stack(num_areas) -> list:
               the input stack.
     """
     stack = load_images()
+    if not stack:
+        print(
+            "No valid images were loaded. Please check your files and try "
+            "again."
+        )
+        sys.exit(0)
+
     stack_areas = []
     aligned_images = []
+    seed_images = []
 
+    while True:
+        seed_image = input(
+            'Enter the filename of a seed image (maximum of 4) or type "done" '
+            + 'to continue with alignment:\n'
+        )
+        seed_found = False
+        if seed_image.strip() == "done":
+            break
+        if seed_image in seed_images:
+            print(f"{seed_image} already selected as a seed image.\n")
+            continue
+        for i, image_data in enumerate(stack):
+            if image_data.filename == seed_image:
+                seed_found = True
+                break
+        if not seed_found:
+            print(f"{seed_image} not found among uploaded images.\n")
+            continue
+        seed_images.append(seed_image)
+        if len(seed_images) >= 4:
+            break
+    
+    # Rebuild stack with the seed images first
+    seed_stack = [img for img in stack if img.filename in seed_images]
+    non_seed_stack = [img for img in stack if img.filename not in seed_images]
+    stack = seed_stack + non_seed_stack
+
+    # Obtain areas for keypoint detection
     for i in range(len(stack)):
-        stack_areas.append(get_area_coords(stack[i], num_areas))
+        areas = get_area_coords(stack[i], num_areas)
+        if len(areas) < num_areas:
+            print(
+                "Plot closed before all areas were selected. Exiting program."
+            )
+            sys.exit(0)
+        stack_areas.append(areas)
 
     # Load SuperPoint model and set to evaluation mode
     superpoint = superpoint_pytorch.SuperPoint(
@@ -455,11 +489,13 @@ def align_stack(num_areas) -> list:
     superpoint.load_state_dict(weights)
 
     for i in range(len(stack)):
-        print(f"Aligning {stack[i].filename}")
+        print(f'Aligning "{stack[i].filename}"...')
+        aligned = None
         if i == 0:
-            aligned_images.append(stack[i])
+            aligned = ImageData(stack[i].image, f"aligned_{stack[i].filename}")
         else:
-            # Collect keypoint pairs with previous images (at most 10)
+            # Collect keypoint pairs with previously aligned images
+            # (at most 10)
             kptsI_sets = []
             kptsT_sets = []
             start_index = max(0, len(aligned_images) - 10)
@@ -473,6 +509,7 @@ def align_stack(num_areas) -> list:
                 )
                 if kptsI.shape[0] == 0:
                     continue
+                print(len(kptsI))
                 kptsI_sets.append(kptsI)
                 kptsT_sets.append(kptsT)
 
@@ -486,8 +523,10 @@ def align_stack(num_areas) -> list:
             keypairs = (kptsI_all, kptsT_all)
 
             aligned = transform_image(stack[i], stack[0], keypairs)
-            aligned_images.append(aligned)
-            export_image(aligned)
+
+        # Store and export the aligned image
+        aligned_images.append(aligned)
+        export_image(aligned)
 
     return aligned_images
 

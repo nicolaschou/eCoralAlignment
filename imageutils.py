@@ -1,54 +1,44 @@
+from pathlib import Path
 import numpy as np
 import cv2
-from pathlib import Path
 
-
-def check_bgr(img: np.ndarray, name: str) -> np.ndarray:
-    """Validates that an image is in BGR format."""
-    if not isinstance(img, np.ndarray):
-        raise TypeError(f"{name} must be stored as a numpy array")
-    elif img.ndim == 3 and img.shape[2] == 3:
-        return img
-    else:
-        raise ValueError(
-            f"{name} must be BGR (shape: [H, W, 3]), got {img.shape}"
-        )
-
-
-def check_gray(img: np.ndarray, name: str) -> np.ndarray:
-    """Validates that an image is in grayscale format."""
-    if not isinstance(img, np.ndarray):
-        raise TypeError(f"{name} must be stored as a numpy array")
-    elif img.ndim == 2:
-        return img
-    else:
-        raise ValueError(
-            f"{name} must be grayscale (shape: [H, W]), got {img.shape}"
-        )
-
-
-def check_string(string: str, name: str) -> str:
-    """Validates that an argument is a string."""
-    if not isinstance(string, str):
-        raise TypeError(f"{name} must be a string")
-    else:
-        return string
-    
-
-def check_shape(arr: np.ndarray, dim1: int, name: str) -> np.ndarray:
-    """Validates that an array has shape [N, dim1]."""
+def check_shape(arr: np.ndarray, shape: tuple, name: str) -> np.ndarray:
+    """Validate the shape of a numpy array (ignore -1)."""
     if not isinstance(arr, np.ndarray):
         raise TypeError(f"{name} must be a numpy array")
-    if arr.ndim != 2 or arr.shape[1] != dim1:
+    if arr.ndim != len(shape):
         raise ValueError(
-            f"{name} must have shape [N, {dim1}], got {arr.shape}"
+            f"{name} must be {len(shape)}D, got {arr.ndim}D"
         )
+    for i, (actual, expected) in enumerate(zip(arr.shape, shape)):
+        if expected != -1 and actual != expected:
+            raise ValueError(
+                f"{name} has wrong size in dimension {i}: expected {expected},"
+                f" got {actual}; full shape: {arr.shape}"
+            )
     return arr
 
 
+def check_bgr(img: np.ndarray, name: str) -> np.ndarray:
+    """Validate that an image is in BGR format."""
+    return check_shape(img, (-1, -1, 3), name)
+
+
+def check_gray(img: np.ndarray, name: str) -> np.ndarray:
+    """Validate that an image is in grayscale format."""
+    return check_shape(img, (-1, -1), name)
+
+
+def check_string(string: str, name: str) -> str:
+    """Validate that an argument is a string."""
+    if not isinstance(string, str):
+        raise TypeError(f"{name} must be a string")
+    return string
+    
+
 def check_extn(filename: str, name: str) -> str:
-    """Validates that a filename ends with an image file extension."""
-    allowed = (".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp")
+    """Validate that a filename ends with an image file extension."""
+    allowed = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp")
     if not filename.lower().endswith(allowed):
         raise ValueError(
             f"{name} must have a valid image file extension, got {filename}"
@@ -68,11 +58,8 @@ class ImageData:
             None.
         processed (np.ndarray | None): Processed version of the image
             used for keypoint detection (grayscale). Defaults to None.
-        aligned (np.ndarray | None): Aligned version of the image 
-            (BGR). Defaults to None.
-        keyareas (np.ndarray | None): Array of rectangular areas of
-            interest represented as [x1, y1, x2, y2] (shape: [N, 4]).
-            Defaults to None.
+        keyarea (np.ndarray | None): Rectangular area of interest
+            represented as [x1, y1, x2, y2]. Defaults to None.
         kpts (np.ndarray | None): Array of keypoints that were manually
             selected by the user, or that correspond to detected
             features (shape: [N, 2]). Defaults to None.
@@ -80,19 +67,17 @@ class ImageData:
             to detected features (shape: [N, 256]). Defaults to None.
     """
 
-
     def __init__(
             self, 
             image: np.ndarray | None = None,
             filename: str | None = None,
             processed: np.ndarray | None = None,
-            aligned: np.ndarray | None = None,
-            keyareas: np.ndarray | None = None,
+            keyarea: np.ndarray | None = None,
             kpts: np.ndarray | None = None,
             desc: np.ndarray | None = None
         ):
         """
-        Initializes an ImageData object.
+        Initialize an ImageData object.
 
         Args:
             image (np.ndarray, optional): The image data as a numpy
@@ -102,11 +87,8 @@ class ImageData:
             processed (np.ndarray, optional): Processed version of the
                 image used for keypoint detection (grayscale). Defaults
                 to None.
-            aligned (np.ndarray, optional): Aligned version of the
-                image (BGR). Defaults to None.
-            keyareas (np.ndarray, optional): Array of rectangular areas
-                of interest represented as [x1, y1, x2, y2] (shape: 
-                [N, 4]). Defaults to None.
+            keyarea (np.ndarray, optional): Rectangular area of interest
+                represented as [x1, y1, x2, y2]. Defaults to None.
             kpts (np.ndarray, optional): Array of keypoints that were
                 manually selected by the user, or that correspond to
                 detected features (shape: [N, 2]). Defaults to None.
@@ -117,16 +99,13 @@ class ImageData:
         self.image = image
         self.filename = filename
         self.processed = processed
-        self.aligned = aligned
-        self.keyareas = keyareas
+        self.keyarea = keyarea
         self.kpts = kpts
         self.desc = desc
-
 
     @property
     def image(self) -> np.ndarray | None:
         return self._image
-
 
     @image.setter
     def image(self, value: np.ndarray | None):
@@ -135,11 +114,9 @@ class ImageData:
         else:
             self._image = check_bgr(value, "image")
 
-
     @property
     def filename(self) -> str | None:
         return self._filename
-
 
     @filename.setter
     def filename(self, value: str | None):
@@ -149,11 +126,9 @@ class ImageData:
             value = check_string(value, "filename")
             self._filename = check_extn(value, "filename")
 
-
     @property
     def processed(self) -> np.ndarray | None:
         return self._processed
-
 
     @processed.setter
     def processed(self, value: np.ndarray | None):
@@ -162,130 +137,136 @@ class ImageData:
         else:
             self._processed = check_gray(value, "processed")
 
-
     @property
-    def aligned(self) -> np.ndarray | None:
-        return self._aligned
+    def keyarea(self) -> np.ndarray | None:
+        return self._keyarea
 
-
-    @aligned.setter
-    def aligned(self, value: np.ndarray | None):
+    @keyarea.setter
+    def keyarea(self, value: np.ndarray | None):
         if value is None:
-            self._aligned = None
+            self._keyarea = None
         else:
-            self._aligned = check_bgr(value, "aligned")
-
-
-    @property
-    def keyareas(self) -> np.ndarray | None:
-        return self._keyareas
-
-
-    @keyareas.setter
-    def keyareas(self, value: np.ndarray | None):
-        if value is None:
-            self._keyareas = None
-        else:
-            self._keyareas = check_shape(value, 4, "keyareas")
-
+            self._keyarea = check_shape(value, (4,), "keyarea")
 
     @property
     def kpts(self) -> np.ndarray | None:
         return self._kpts
-
 
     @kpts.setter
     def kpts(self, value: np.ndarray | None):
         if value is None:
             self._kpts = None
         else:
-            self._kpts = check_shape(value, 2, "kpts")
-
+            self._kpts = check_shape(value, (-1, 2), "kpts")
 
     @property
     def desc(self) -> np.ndarray | None:
         return self._desc
-
 
     @desc.setter
     def desc(self, value: np.ndarray | None):
         if value is None:
             self._desc = None
         else:
-            self._desc = check_shape(value, 256, "desc")
+            self._desc = check_shape(value, (-1, 256), "desc")
+
+    def __str__(self):
+        return self.filename if self.filename is not None else ""
 
 
-def load_image(path_str: str):
+def scale_image(image: np.ndarray, scale: int | float) -> np.ndarray:
     """
-    Loads an image from disk and returns it as a numpy array.
+    Return a rescaled version of the given image.
+
+    Args:
+        image (np.ndarray): The input image to be resized.
+        scale (int | float): The scale factor for resizing. Must be > 0.
+
+    Returns:
+        np.ndarray: The resized image as a numpy array.
+    """
+    # Validate scale
+    if not isinstance(scale, (int, float)):
+        raise TypeError("scale must be an int or float")
+    if scale <= 0:
+        raise ValueError("scale must be > 0")
+    
+    # Validate image
+    if not isinstance(image, np.ndarray):
+        raise TypeError("image must be a np.ndarray")
+    
+    return cv2.resize(image, None, fx=scale, fy=scale)
+    
+
+def rgb_image(image: np.ndarray) -> np.ndarray:
+    """
+    Convert an image from BGR to RGB color space.
+
+    Args:
+        image (np.ndarray): The input image stored in BGR format
+            (shape: [H, W, 3]).
+
+    Returns:
+        np.ndarray: The converted image in RGB format with the same
+        shape as the input.
+    """
+    image = check_bgr(image, "image")
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+
+def load_image(path_str: str) -> ImageData:
+    """
+    Load an image from disk and return it as an ImageData object.
 
     Args:
         path_str (str): Path to the image file. Must be a string with a
             supported image file extension.
 
     Returns:
-        np.ndarray: The loaded image in BGR format (shape: [H, W, 3]).
-
-    Raises:
-        TypeError: If `path_str` is not a string.
-        ValueError: If `path_str` does not have a valid image extension.
-        FileNotFoundError: If the specified file does not exist.
-        OSError: If the file exists but cannot be read as an image.
+        ImageData: The loaded image in BGR format (shape: [H, W, 3]).
     """
     # Validate the path
-    if path_str is None:
-        raise TypeError("path_str must be a string")
     path_str = check_string(path_str, "path_str")
     path_str = check_extn(path_str, "path_str")
     path = Path(path_str)
     if not path.is_file():
         raise FileNotFoundError(f"No such file: {path}")
     
-    image = cv2.imread(path_str, cv2.IMREAD_COLOR)
-    if image is None:
+    raw = cv2.imread(path_str, cv2.IMREAD_COLOR)
+    if raw is None:
         raise OSError(f"Failed to read image: {path_str}")
+    
+    image = ImageData(raw, path.name)
     return image
 
 
-def export_image(image: np.ndarray, filename: str, out_dir: str) -> str | None:
+def export_image(image: ImageData, out_dir: str) -> str | None:
     """
-    Saves an image (stored as a numpy array) to a specified directory.
+    Save an image to a specified directory.
 
     Args:
-        image (np.ndarray): The image to export in BGR format.
-        filename (str): The filename of the exported image. This must
-            end in a valid image file extension (e.g. .jpg). The
-            extension dictates the file format of the exported image.
+        image (ImageData): The image to export.
         out_dir (str): The path of the directory to save the image to.
 
     Returns:
         str | None: The full path where the image was saved, or None if
         saving failed.
-
-    Raises:
-        TypeError: If any argument is of incorrect data type.
-        ValueError: If any argument has invalid structure.
     """
     # Ensure specified output directory exists
-    if out_dir is None:
-        raise TypeError("out_dir must be a string")
     out_dir = check_string(out_dir, "out_dir")
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
-    # Validate filename
-    if filename is None:
-        raise TypeError("filename must be a string")
-    filename = check_string(filename, "filename")
-    filename = check_extn(filename, "filename")
+    # Validate image
+    if not isinstance(image, ImageData):
+        raise TypeError("image must be an ImageData object")
+    if image.image is None:
+        raise ValueError("Provided image has not been loaded")
+    elif image.filename is None:
+        raise ValueError("Provided image does not have a filename")
     
-    # Ensure image is a numpy array in the correct format
-    if image is None:
-        raise TypeError("image must be a numpy array")
-    image = check_bgr(image, "image")
-    
-    save_path = out_path / filename
-    if cv2.imwrite(str(save_path), image):
+    save_path = out_path / image.filename
+    if cv2.imwrite(str(save_path), image.image):
         return str(save_path)
     else:
         return None

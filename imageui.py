@@ -1,13 +1,13 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib as mpl
-mpl.rcParams['toolbar'] = 'None'
-import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import patches
 from matplotlib.widgets import RectangleSelector
 from mpl_interactions import zoom_factory
 import imageutils as iu
 from imageutils import ImageData
-    
+mpl.rcParams['toolbar'] = 'None'
+
 
 def mpl_window(img: np.ndarray, maxdim: int) -> tuple:
     """
@@ -18,9 +18,9 @@ def mpl_window(img: np.ndarray, maxdim: int) -> tuple:
         maxdim (int): Maximum dimension of the figure.
 
     Returns:
-        tuple:
-            - fig (matplotlib.figure.Figure): The Matplotlib figure.
-            - ax (matplotlib.axes.Axes): The axes object.
+        tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
+            - `fig` (matplotlib.figure.Figure): The Matplotlib figure.
+            - `ax` (matplotlib.axes.Axes): The axes object.
     """
     h, w = img.shape[:2]
     dpi = max(h, w) / maxdim
@@ -30,7 +30,57 @@ def mpl_window(img: np.ndarray, maxdim: int) -> tuple:
     return fig, ax
 
 
-def get_keyarea(image_data: ImageData) -> np.ndarray:
+def template_window(
+    template_data: ImageData,
+    keypoints: np.ndarray,
+) -> tuple:
+    """
+    Creates a matplotlib figure displaying a template with annotated
+    keypoints.
+
+    Args:
+        template_data (ImageData): The template image.
+        keypoints (np.ndarray): Array of keypoints (shape: [N, 2]).
+
+    Returns:
+        tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
+            - `fig` (matplotlib.figure.Figure): The Matplotlib figure.
+            - `ax` (matplotlib.axes.Axes): The axes object.
+    """
+    # Rescale to 1500 pixels to reduce zoom lag
+    rgb = iu.rgb_image(template_data.image)
+    h, w = rgb.shape[:2]
+    scale = 1
+    if h > 1500 or w > 1500:
+        scale = 1500/max(h, w)
+        rgb = iu.scale_image(rgb, scale)
+
+    # Plot resized image with zoom functionality
+    fig, ax = mpl_window(rgb, 9)
+    fig.canvas.manager.set_window_title(
+        f"Template w/ Keypoints ({template_data.filename})"
+    )
+    ax.imshow(rgb)
+    zoom_factory(ax)
+
+    # Plot and number points
+    scaled_points = keypoints * scale
+    ax.plot(scaled_points[:, 0], scaled_points[:, 1], "ro", ms=6)
+    for i, (x, y) in enumerate(scaled_points):
+        ax.text(
+            x,
+            y,
+            str(i+1),
+            color="orange",
+            fontsize=6,
+            ha="center",
+            va="center",
+        )
+
+    return fig, ax
+
+
+def get_keyarea(image_data: ImageData) -> np.ndarray | None:
     """
     Collect a rectangular area in an image from user input.
 
@@ -42,15 +92,15 @@ def get_keyarea(image_data: ImageData) -> np.ndarray:
         image_data (ImageData): ImageData object for the image.
 
     Returns:
-        np.ndarray: A numpy array containing (x1, y1, x2, y2)
-            coordinates representing the selected area.
+        np.ndarray | None: (x1, y1, x2, y2) integer coordinates, or
+            None if the window is closed before an area is selected.
     """
 
     # Plot image
     rgb = iu.rgb_image(image_data.image)
-    fig, ax = mpl_window(rgb, 10)
+    fig, ax = mpl_window(rgb, 9)
+    fig.canvas.manager.set_window_title(image_data.filename)
     ax.imshow(rgb)
-    ax.set_title(image_data.filename)
 
     area = None  # stores area coordinates
     box = None  # stores the rectangle patch
@@ -116,10 +166,10 @@ def get_keyarea(image_data: ImageData) -> np.ndarray:
 def get_keypoints(
     image_data: ImageData,
     num_points: int,
-    tmp_fig=None,
-) -> np.ndarray:
+    tmp_fig: mpl.figure.Figure | None = None
+) -> np.ndarray | None:
     """
-    Displays an image and collects a specified number of (x, y) points 
+    Displays an image and collects a specified number of (x, y) points
     clicked by the user.
 
     Keypoints are selected and drawn on clicks. Users can remove the
@@ -129,12 +179,13 @@ def get_keypoints(
     Args:
         image_data (ImageData): ImageData object for the image.
         num_points (int): Number of points to collect.
-        tmp_fig (matplotlib.figure.Figure): Figure containing the 
+        tmp_fig (matplotlib.figure.Figure): Figure containing the
             template and its keypoints.
 
     Returns:
-        np.ndarray: Array of shape (num_points, 2) with clicked (x, y) 
-            coordinates in the original dimensions.
+        np.ndarray | None: Array of shape (num_points, 2) with clicked
+            (x, y) coordinates in the original dimensions, or None if
+            the window is closed before all keypoints are selected.
     """
     plural = "s" if num_points != 1 else ""
 
@@ -147,13 +198,12 @@ def get_keypoints(
         rgb = iu.scale_image(rgb, scale)
 
     # Plot resized image with zoom functionality
-    fig, ax = mpl_window(rgb, 10)
+    fig, ax = mpl_window(rgb, 9)
+    fig.canvas.manager.set_window_title(
+        f"Select {num_points} keypoint{plural} ({image_data.filename})"
+    )
     ax.imshow(rgb)
     zoom_factory(ax)
-    ax.set_title(
-        f"Click {num_points} keypoint{plural} on the image "
-        f"({image_data.filename})"
-    )
 
     points = []  # stores keypoint coordinates
     dots = []  # stores the Line2D dot objects
@@ -188,13 +238,71 @@ def get_keypoints(
                 if tmp_fig is not None:
                     plt.close(tmp_fig)
             else:
-                print(f"Click {num_points} point{plural} first")
+                print(f"Click {num_points} keypoint{plural} first")
 
     # Connect the event handler and display the image
     cid_click = fig.canvas.mpl_connect("button_press_event", onclick)
     cid_key = fig.canvas.mpl_connect("key_press_event", onkey)
     plt.show()
 
+    # Return None if the user closed the window early
+    if not points or len(points) != num_points:
+        if tmp_fig is not None:
+            plt.close(tmp_fig)
+        return None
+
     # Scale points to original dimensions and return
     orig_points = np.array(points) / scale
     return orig_points
+
+
+def show_debug(
+    image: ImageData,
+    template: ImageData,
+    kptsI: np.ndarray,
+    kptsT: np.ndarray
+):
+    """
+    Display a visual debug window showing matched keypoints between two
+    images.
+
+    Args:
+        image (ImageData): The source image.
+        template (ImageData): The template image.
+        kptsI (np.ndarray): Array of shape [N, 2] containing (x, y)
+            coordinates of keypoints in the source image.
+        kptsT (np.ndarray): Array of shape [N, 2] containing (x, y)
+            coordinates of corresponding keypoints in the template
+            image.
+    """
+    # Combine images side by side
+    hI, wI = image.image.shape[:2]
+    hT, wT = template.image.shape[:2]
+    height = max(hI, hT)
+    combined = np.zeros((height, wI + wT, 3), dtype=np.uint8)
+    combined[:hI, :wI, :] = iu.rgb_image(image.image)
+    combined[:hT, wI:wI + wT, :] = iu.rgb_image(template.image)
+
+    # Plot combined image
+    fig, ax = mpl_window(combined, 12)
+    fig.canvas.manager.set_window_title(
+        f"{image.filename} vs. {template.filename} (# Matches: {len(kptsI)})"
+    )
+    ax.imshow(combined)
+    ax.axis("off")
+
+    # Plot matches
+    for i in range(len(kptsI)):
+        # Get match coordinates
+        x1, y1 = kptsI[i]
+        x2, y2 = kptsT[i]
+        x2 += wI
+
+        # Draw keypoints
+        ax.scatter([x1], [y1], s=10, c="lime", marker="o")
+        ax.scatter([x2], [y2], s=10, c="lime", marker="o")
+
+        # Draw connecting line
+        ax.plot([x1, x2], [y1, y2], c="red", linewidth=0.3)
+
+    plt.show()

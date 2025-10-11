@@ -1,8 +1,8 @@
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from imageutils import load_image
+
 
 class ReorderableListbox(ttk.Frame):
     """
@@ -17,17 +17,17 @@ class ReorderableListbox(ttk.Frame):
         scroll (ttk.Scrollbar): The vertical scrollbar.
         _items (list): The underlying Python list representing current
             items.
-        _var (tk.Variable): String variable tracking listbox content.
+        _var (tk.StringVar): String variable tracking listbox content.
         _drag_data (dict): Tracks drag state with keys "start_index" and
             "cur_index" for managing item movement during reordering.
     """
 
     def __init__(
-            self,
-            parent: tk.Widget,
-            items: list | None = None,
-            height=20
-        ):
+        self,
+        parent: tk.Widget,
+        items: list | None = None,
+        height: int = 20
+    ):
         """
         Initialize a ReorderableListbox object.
 
@@ -40,10 +40,10 @@ class ReorderableListbox(ttk.Frame):
             height (int, optional): The number of visible rows in the
                 listbox before scrolling is required. Defaults to 20.
         """
-        ttk.Frame.__init__(self, parent, padding=6)
-        
+        ttk.Frame.__init__(self, parent, padding=4)
+
         self._items = items if items is not None else []
-        self._var = tk.Variable(value=[str(x) for x in self._items])
+        self._var = tk.StringVar(value=[str(x) for x in self._items])
 
         self.lb = tk.Listbox(
             self,
@@ -79,16 +79,18 @@ class ReorderableListbox(ttk.Frame):
 
     # Public -----------------------------------------------------------
     def set_items(self, items: list):
-        """Set items."""
+        """Set the items for this listbox (replaces current items)."""
         self._items = list(items)
         self._var.set([str(x) for x in self._items])
 
     def get_items(self) -> list:
-        """Return a copy of items."""
+        """Return a shallow copy of items."""
         return list(self._items)
-    
+
     def append_items(self, items: list):
-        """Add a list of items."""
+        """Append a list of items to the current items."""
+        if not items:
+            return
         self._items.extend(items)
         self._var.set([str(x) for x in self._items])
 
@@ -98,7 +100,7 @@ class ReorderableListbox(ttk.Frame):
         self.lb.selection_set(idx)
         self.lb.activate(idx)
         self.lb.see(idx)
-    
+
     def remove_selected(self) -> object | None:
         """Remove the currently selected item."""
         sel = self._current_selection_index()
@@ -106,7 +108,7 @@ class ReorderableListbox(ttk.Frame):
             return None
         removed = self._items.pop(sel)
         self.lb.delete(sel)
-        
+
         # Update selected and active item
         if self.lb.size():
             new_sel = min(sel, self.lb.size() - 1)
@@ -116,7 +118,7 @@ class ReorderableListbox(ttk.Frame):
         self._var.set([str(x) for x in self._items])
 
         return removed
-    
+
     # Internal ---------------------------------------------------------
     def _current_selection_index(self) -> int | None:
         """Return the index of the currently selected item."""
@@ -142,7 +144,7 @@ class ReorderableListbox(ttk.Frame):
         # Update the list of objects
         item = self._items.pop(i)
         self._items.insert(j, item)
-        
+
         # Update the listbox
         text = self.lb.get(i)
         self.lb.delete(i)
@@ -159,7 +161,7 @@ class ReorderableListbox(ttk.Frame):
         """Handle mouse button press to start a drag operation."""
         if self.lb.size() == 0:
             return
-        
+
         # Update drag state
         idx = self._index_nearest_y(event.y)
         self._drag_data["start_index"] = idx
@@ -175,7 +177,7 @@ class ReorderableListbox(ttk.Frame):
         """Handle mouse drag events to reorder list items."""
         if self._drag_data["start_index"] is None:
             return
-        
+
         # Update drag state
         new_index = self._index_nearest_y(event.y)
         cur_index = self._drag_data["cur_index"]
@@ -198,10 +200,14 @@ class AlignmentManager(ttk.Frame):
     A GUI component for managing and organizing two lists of images:
     "Unaligned" and "Templates".
 
-    This frame displays two side-by-side panels, each containing:
-      - A title label ("Unaligned" or "Templates")
-      - A ReorderableListbox for displaying images
-      - Two control buttons: "Add Images" and "Remove Selected Image"
+    Each list is stored in a panel that contains:
+      - A title label ("Unaligned" or "Templates").
+      - A ReorderableListbox for displaying images.
+      - Two control buttons: "Add Images" and "Remove Selected Image".
+
+    The GUI also includes:
+      - A button that prompts the user to select an output directory
+      - A button that prompts the next step in alignment
 
     Attributes:
         max_templates (int): The maximum number of template images.
@@ -209,9 +215,13 @@ class AlignmentManager(ttk.Frame):
             unaligned image items.
         templates_list (ReorderableListbox): Listbox widget managing
             template image items.
+        _out_dir (str | None): Path to the selected output directory,
+            or None if no folder has been chosen yet.
+        _out_dir_var (tk.StringVar): Backing variable for the footer
+            label; reflects the selected output folder.
     """
 
-    def __init__(self, parent: tk.Widget, max_templates: int = 10):
+    def __init__(self, parent: tk.Widget, max_templates: int):
         """
         Initialize an AlignmentManager object.
 
@@ -222,6 +232,8 @@ class AlignmentManager(ttk.Frame):
         ttk.Frame.__init__(self, parent, padding=10)
 
         self.max_templates = max_templates
+        self._out_dir: str | None = None
+        self._out_dir_var = tk.StringVar(value="No folder selected")
 
         self.columnconfigure(0, weight=1, uniform="cols")
         self.columnconfigure(1, weight=1, uniform="cols")
@@ -244,13 +256,45 @@ class AlignmentManager(ttk.Frame):
             else:
                 self.templates_list = rl
 
+        # Footer containing "Select Output Folder" and "Done" buttons
+        footer = ttk.Frame(self)
+        footer.grid(row=1, column=0, columnspan=2,
+                    sticky="ew", padx=(12, 12), pady=(16, 0))
+        footer.columnconfigure(1, weight=1)
+
+        ttk.Button(
+            footer,
+            text="Select Output Folder",
+            command=self._choose_out_dir
+        ).grid(row=0, column=0, sticky="w")
+
+        ttk.Label(footer, textvariable=self._out_dir_var).grid(
+            row=0, column=1, sticky="w", padx=(8, 0)
+        )
+
+        ttk.Button(
+            footer,
+            text="Done",
+            command=self._done
+        ).grid(row=0, column=2, sticky="e")
+
+    # Public -----------------------------------------------------------
+    def get_unaligned_items(self) -> list:
+        """Return the list of unaligned images."""
+        return self.unaligned_list.get_items()
+
+    def get_template_items(self) -> list:
+        """Return the list of template images."""
+        return self.templates_list.get_items()
+
+    # Internal ---------------------------------------------------------
     def _build_panel(
         self,
         column: int,
         title: str,
         add_cmd,
         remove_cmd,
-    ):
+    ) -> tuple:
         """
         Build a single side panel containing a title label, a
         reorderable list, and "Add" / "Remove" buttons.
@@ -268,25 +312,26 @@ class AlignmentManager(ttk.Frame):
                 Selected Image" button is pressed.
 
         Returns:
-            tuple[ttk.Frame, ReorderableListbox]: The panel and its
-                ReorderableListbox.
+            tuple[ttk.Frame, ReorderableListbox]:
+                - `panel` (ttk.Frame): The panel.
+                - `rl` (ReorderableListbox): The reorderable list.
         """
-        pane = ttk.Frame(self)
-        pane.grid(row=0, column=column, sticky="nsew")
-        pane.columnconfigure(0, weight=1)
-        pane.rowconfigure(1, weight=1)
+        panel = ttk.Frame(self)
+        panel.grid(row=0, column=column, sticky="nsew")
+        panel.columnconfigure(0, weight=1)
+        panel.rowconfigure(1, weight=1)
 
         ttk.Label(
-            pane,
+            panel,
             text=title,
             font=("TkDefaultFont", 24, "bold")
         ).grid(row=0, column=0, sticky="w", pady=(0, 4))
 
-        rl = ReorderableListbox(pane)
+        rl = ReorderableListbox(panel)
         rl.grid(row=1, column=0, sticky="nsew")
 
-        btns = ttk.Frame(pane)
-        btns.grid(row=2, column=0, sticky="w", padx=(12, 0), pady=(4, 0))
+        btns = ttk.Frame(panel)
+        btns.grid(row=2, column=0, sticky="w", padx=(12, 12), pady=(4, 0))
         btns.columnconfigure((0, 1), weight=1)
 
         ttk.Button(
@@ -294,22 +339,37 @@ class AlignmentManager(ttk.Frame):
             text="Add Images",
             command=add_cmd
         ).grid(row=0, column=0, sticky="w", padx=(0, 4))
+
         ttk.Button(
             btns,
             text="Remove Selected Image",
             command=remove_cmd
-        ).grid(row=0, column=1, sticky="w")
+        ).grid(row=0, column=1, sticky="w", padx=(4, 0))
 
-        return pane, rl
+        return panel, rl
 
-    # Public -----------------------------------------------------------
-    def get_unaligned_items(self) -> list:
-        """Return the list of unaligned images."""
-        return self.unaligned_list.get_items()
+    def _choose_out_dir(self):
+        """Prompt user to select an output folder."""
+        out_dir = filedialog.askdirectory(
+            parent=self,
+            title="Select Output Folder"
+        )
+        if out_dir:
+            self._out_dir = out_dir
+            self._out_dir_var.set(
+                f"Output Folder: {Path(out_dir).name}"
+            )
 
-    def get_template_items(self) -> list:
-        """Return the list of template images."""
-        return self.templates_list.get_items()
+    def _done(self):
+        """Package results and close the window."""
+        result = {
+            "unaligned": self.get_unaligned_items(),
+            "templates": self.get_template_items(),
+            "out_dir": self._out_dir,
+        }
+        top = self.winfo_toplevel()
+        setattr(top, "result", result)
+        top.destroy()
 
     # Button Actions ---------------------------------------------------
     def _add_unaligned(self):
@@ -325,6 +385,8 @@ class AlignmentManager(ttk.Frame):
     def _add_templates(self):
         """Add to the list of template images."""
         imgs = get_images(self, "Select Template Images")
+        if not imgs:
+            return
         new_len = len(self.templates_list.get_items()) + len(imgs)
         if new_len > self.max_templates:
             messagebox.showerror(
@@ -347,7 +409,7 @@ def get_images(parent: tk.Widget, heading: str) -> list:
     Args:
         parent (tk.Widget): The parent container.
         heading (str): The text shown at the top of the file dialog.
-    
+
     Returns:
         list: List of ImageData objects containing the selected images.
     """

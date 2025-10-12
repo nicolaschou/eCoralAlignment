@@ -7,3 +7,9 @@
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Python
+__pycache__/
+
+# Virtual environments
+.conda/

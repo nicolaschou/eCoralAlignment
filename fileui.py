@@ -1,6 +1,8 @@
 from pathlib import Path
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+
 from imageutils import load_image
 
 
@@ -208,6 +210,8 @@ class AlignmentManager(ttk.Frame):
     The GUI also includes:
       - A button that prompts the user to select an output directory
       - A button that prompts the next step in alignment
+      - A numeric entry box for the user to enter a number of keypoints
+        when `_manual` is True.
 
     Attributes:
         max_templates (int): The maximum number of template images.
@@ -219,21 +223,38 @@ class AlignmentManager(ttk.Frame):
             or None if no folder has been chosen yet.
         _out_dir_var (tk.StringVar): Backing variable for the footer
             label; reflects the selected output folder.
+        _manual (bool): Whether this alignment manager is in manual
+            mode, which adds an entry box in the footer for the number
+            of keypoints and requires that the user selects a template.
+            Defaults to False.
+        _num_points_var (tk.StringVar): Created only when `_manual` is
+            True. Holds the value of the number of keypoints in the
+            footer entry box.
     """
 
-    def __init__(self, parent: tk.Widget, max_templates: int):
+    def __init__(
+        self,
+        parent: tk.Widget,
+        max_templates: int,
+        manual: bool = False
+    ):
         """
         Initialize an AlignmentManager object.
 
         Args:
             parent (tk.Widget): The parent container.
             max_templates (int): The maximum number of template images.
+            manual (bool, optional): Whether to enable manual mode,
+                which adds an entry box in the footer for the number of
+                keypoints and requires that the user selects a template.
+                Defaults to False.
         """
         ttk.Frame.__init__(self, parent, padding=10)
 
         self.max_templates = max_templates
-        self._out_dir: str | None = None
+        self._out_dir = None
         self._out_dir_var = tk.StringVar(value="No folder selected")
+        self._manual = manual
 
         self.columnconfigure(0, weight=1, uniform="cols")
         self.columnconfigure(1, weight=1, uniform="cols")
@@ -272,11 +293,29 @@ class AlignmentManager(ttk.Frame):
             row=0, column=1, sticky="w", padx=(8, 0)
         )
 
+        # Add number of keypoints entry if `_manual` is True
+        if self._manual:
+            # Register a validation callback that allows only digits
+            vcmd = (self.register(self._validate_number), "%P")
+
+            ttk.Label(footer, text="Number of Keypoints:").grid(
+                row=0, column=2, sticky="e"
+            )
+
+            self._num_points_var = tk.StringVar(value="4")
+            ttk.Entry(
+                footer,
+                textvariable=self._num_points_var,
+                width=5,
+                validate="key",
+                validatecommand=vcmd
+            ).grid(row=0, column=3, sticky="e", padx=(4, 16))
+
         ttk.Button(
             footer,
             text="Done",
             command=self._done
-        ).grid(row=0, column=2, sticky="e")
+        ).grid(row=0, column=4, sticky="e")
 
     # Public -----------------------------------------------------------
     def get_unaligned_items(self) -> list:
@@ -360,15 +399,45 @@ class AlignmentManager(ttk.Frame):
                 f"Output Folder: {Path(out_dir).name}"
             )
 
+    def _validate_number(self, value: str) -> bool:
+        """Allow only numeric or empty input."""
+        return value.isdigit() or value == ""
+
     def _done(self):
-        """Package results and close the window."""
-        result = {
+        """
+        Package results and close the window. The window is not closed
+        if `_manual` is True and no template has been selected.
+        """
+        # Handle num_points depending on whether manual=True
+        num_points = None
+        if self._manual:
+            # Ensure template has been selected
+            if not self.get_template_items():
+                messagebox.showerror(
+                    "No Template Selected",
+                    "A template is required for manual alignment.",
+                    parent=self,
+                )
+                return
+            value = self._num_points_var.get().strip()
+
+            # Ensure number of keypoints is valid
+            if value == "" or int(value) < 4:
+                messagebox.showerror(
+                    "Invalid Number of Keypoints",
+                    "Number of keypoints must be at least 4.",
+                    parent=self)
+                return
+            num_points = int(value)
+
+        results = {
             "unaligned": self.get_unaligned_items(),
             "templates": self.get_template_items(),
             "out_dir": self._out_dir,
+            "num_points": num_points
         }
         top = self.winfo_toplevel()
-        setattr(top, "result", result)
+        setattr(top, "results", results)
         top.destroy()
 
     # Button Actions ---------------------------------------------------
@@ -391,7 +460,8 @@ class AlignmentManager(ttk.Frame):
         if new_len > self.max_templates:
             messagebox.showerror(
                 "Too Many Templates",
-                f"Max: {self.max_templates}; New total would be {new_len}",
+                f"Max number of templates: {self.max_templates}; "
+                f"New total would be {new_len}",
                 parent=self,
             )
         else:
@@ -429,7 +499,7 @@ def get_images(parent: tk.Widget, heading: str) -> list:
         if len(errors) > MAX:
             body += f"\n\n…and {len(errors) - MAX} more."
         messagebox.showerror(
-            "Failed to load some images",
+            "Failed To Load Some Images",
             f"Could not load {len(errors)} file(s):\n\n{body}",
             parent=parent,
         )

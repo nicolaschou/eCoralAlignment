@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class AlignmentConfig:
     """
@@ -8,8 +9,6 @@ class AlignmentConfig:
 
     Attributes:
         weights_path (str): Path to the pretrained SuperPoint weights.
-        out_dir (str | None): Output directory where aligned images are
-            saved. If None, defaults to the working directory.
         aligned_prefix (str): Prefix added to filenames of aligned
             images.
 
@@ -38,7 +37,6 @@ class AlignmentConfig:
     """
     # File management
     weights_path: str = "superpoint/superpoint_v6_from_tf.pth"
-    out_dir: str | None = None
     aligned_prefix: str = "aligned_"
 
     # Alignment pipeline
@@ -57,4 +55,4 @@ class AlignmentConfig:
     scale: float = 0.5
 
     # Debug
-    debug = False
+    debug: bool = False

@@ -1,8 +1,10 @@
 import sys
+
 import tkinter as tk
 import cv2
 import numpy as np
 import torch
+
 from alignment_config import AlignmentConfig
 from fileui import AlignmentManager
 from imageui import get_keyarea, show_debug
@@ -11,7 +13,7 @@ from imageutils import ImageData
 from superpoint import superpoint_pytorch
 
 
-def superpoint_alignment():
+def superpoint_alignment() -> list:
     """
     Align a series of unaligned images to one or more template images
     using SuperPoint keypoint detection and descriptor matching.
@@ -35,10 +37,11 @@ def superpoint_alignment():
     cfg = AlignmentConfig()
 
     # Load templates and unaligned images
-    unaligned, templates = run_alignment_manager(cfg)
+    unaligned, templates, out_dir = run_alignment_manager(cfg)
 
     # Obtain areas for keypoint detection
-    set_keyareas(templates, unaligned)
+    set_keyareas(templates)
+    set_keyareas(unaligned)
 
     # Initialize a SuperPoint model
     superpoint = configure_superpoint(cfg)
@@ -97,7 +100,7 @@ def superpoint_alignment():
 
         # Store and export the aligned image
         templates.append(aligned)
-        iu.export_image(aligned, cfg.out_dir)
+        iu.export_image(aligned, out_dir)
 
     # Return list of newly aligned images
     return templates[num_temps:]
@@ -105,8 +108,8 @@ def superpoint_alignment():
 
 def run_alignment_manager(cfg: AlignmentConfig) -> tuple:
     """
-    Retrieve images and details required to execute alignment using the
-    AlignmentManager GUI.
+    Retrieve images and details required to execute SuperPoint alignment
+    using the AlignmentManager GUI.
     """
     root = tk.Tk()
     root.title("Alignment Manager")
@@ -116,7 +119,7 @@ def run_alignment_manager(cfg: AlignmentConfig) -> tuple:
 
     manager.pack(fill="both", expand=True)
     root.wait_window(root)
-    results = getattr(root, "result", None)
+    results = getattr(root, "results", None)
     if results is None:
         print("Alignment Manager closed unexpectedly. Exiting program.")
         sys.exit(0)
@@ -124,25 +127,16 @@ def run_alignment_manager(cfg: AlignmentConfig) -> tuple:
     # Return templates and unaligned images and set output directory
     unaligned = results["unaligned"]
     templates = results["templates"]
-    cfg.out_dir = results["out_dir"]
-    return unaligned, templates
+    out_dir = results["out_dir"]
+    return unaligned, templates, out_dir
 
 
-def set_keyareas(templates: list, unaligned: list):
+def set_keyareas(images: list):
     """
-    Get keyareas for the provided unaligned and template images and
-    store them in their associated ImageData objects.
+    Get keyareas for the provided images and store them in their
+    associated ImageData objects.
     """
-    for image in templates:
-        keyarea = get_keyarea(image)
-        if keyarea is None:
-            print(
-                "Plot closed before an area was selected. Exiting program."
-            )
-            sys.exit(0)
-        image.keyarea = keyarea
-
-    for image in unaligned:
+    for image in images:
         keyarea = get_keyarea(image)
         if keyarea is None:
             print(
@@ -248,7 +242,7 @@ def process_features(
     Args:
         image (ImageData): ImageData object that contains the source
             image. Processing and feature detection results are stored
-            in this object
+            in this object.
         superpoint (superpoint_pytorch.SuperPoint): Initialized
             SuperPoint model.
         cfg (AlignmentConfig): Parameters for preprocessing and feature

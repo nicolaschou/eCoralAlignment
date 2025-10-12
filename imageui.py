@@ -4,18 +4,21 @@ import numpy as np
 from matplotlib import patches
 from matplotlib.widgets import RectangleSelector
 from mpl_interactions import zoom_factory
+
 import imageutils as iu
 from imageutils import ImageData
+
 mpl.rcParams['toolbar'] = 'None'
+mpl.use("QtAgg") 
 
 
-def mpl_window(img: np.ndarray, maxdim: int) -> tuple:
+def mpl_window(img: np.ndarray, maxdim: int | float) -> tuple:
     """
     Create a matplotlib window sized to fit the given image.
 
     Args:
         img (np.ndarray): The image as a numpy array (BGR or grayscale).
-        maxdim (int): Maximum dimension of the figure.
+        maxdim (int | float): Maximum dimension of the figure (inches).
 
     Returns:
         tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
@@ -30,12 +33,12 @@ def mpl_window(img: np.ndarray, maxdim: int) -> tuple:
     return fig, ax
 
 
-def template_window(
+def template_plot(
     template_data: ImageData,
     keypoints: np.ndarray,
 ) -> tuple:
     """
-    Creates a matplotlib figure displaying a template with annotated
+    Create a matplotlib figure displaying a template with annotated
     keypoints.
 
     Args:
@@ -56,25 +59,32 @@ def template_window(
         rgb = iu.scale_image(rgb, scale)
 
     # Plot resized image with zoom functionality
-    fig, ax = mpl_window(rgb, 9)
+    fig, ax = mpl_window(rgb, 7)
     fig.canvas.manager.set_window_title(
         f"Template w/ Keypoints ({template_data.filename})"
     )
     ax.imshow(rgb)
     zoom_factory(ax)
 
-    # Plot and number points
+    # Plot points
     scaled_points = keypoints * scale
-    ax.plot(scaled_points[:, 0], scaled_points[:, 1], "ro", ms=6)
-    for i, (x, y) in enumerate(scaled_points):
-        ax.text(
-            x,
-            y,
-            str(i+1),
+    ax.plot(scaled_points[:, 0], scaled_points[:, 1], "ro", ms=3)
+
+    # Label points
+    for i, (x, y) in enumerate(scaled_points, start=1):
+        ax.annotate(
+            str(i),
+            xy=(x, y),
+            xycoords="data",
+            xytext=(4, 10),
+            textcoords="offset points",
+            ha="left",
+            va="top",
             color="orange",
-            fontsize=6,
-            ha="center",
-            va="center",
+            fontsize=10,
+            weight="bold",
+            clip_on=True,
+            zorder=4,
         )
 
     return fig, ax
@@ -154,7 +164,7 @@ def get_keyarea(image_data: ImageData) -> np.ndarray | None:
                 fig.canvas.mpl_disconnect(cid_key)
                 plt.close(fig)
             else:
-                print(f"Select an area first")
+                print("Select an area first")
 
     # Connect the event handler and display the image
     cid_key = fig.canvas.mpl_connect("key_press_event", onkey)
@@ -179,8 +189,8 @@ def get_keypoints(
     Args:
         image_data (ImageData): ImageData object for the image.
         num_points (int): Number of points to collect.
-        tmp_fig (matplotlib.figure.Figure): Figure containing the
-            template and its keypoints.
+        tmp_fig (matplotlib.figure.Figure | None, optional): Figure 
+            containing the template and its keypoints. Defaults to None.
 
     Returns:
         np.ndarray | None: Array of shape (num_points, 2) with clicked

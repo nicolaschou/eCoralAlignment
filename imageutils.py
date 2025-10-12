@@ -1,6 +1,8 @@
 from pathlib import Path
+
 import cv2
 import numpy as np
+
 from alignment_config import AlignmentConfig
 
 
@@ -85,7 +87,7 @@ class ImageData:
             image (np.ndarray, optional): The image data as a numpy
                 array (BGR). Defaults to None.
             filename (str, optional): The name of the image file.
-                Defaults to None
+                Defaults to None.
             processed (np.ndarray, optional): Processed version of the
                 image used for keypoint detection (grayscale). Defaults
                 to None.
@@ -193,7 +195,7 @@ class ImageData:
             None: The processed image is stored in `self.processed`.
         """
         if self.image is None:
-            raise ValueError("ImageData.image is None.")
+            raise ValueError("ImageData.image is None")
 
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
 
@@ -259,10 +261,10 @@ def transform_image(
     image: ImageData,
     template: ImageData,
     keypairs: tuple,
-    cfg: AlignmentConfig
+    outlier_protection: bool = True
 ) -> ImageData:
     """
-    Applies a homography transformation to an image based on given 
+    Applies a homography transformation to an image based on given
     keypoint pairs.
 
     Args:
@@ -270,8 +272,12 @@ def transform_image(
             set).
         template (ImageData): Destination image (must have `.image`
             set).
-        keypairs (tuple): A tuple containing two numpy arrays 
+        keypairs (tuple): A tuple containing two numpy arrays
             (src_points, dst_points).
+        outlier_protection (bool, optional): If True (default), applies
+            robust estimation using the Least Median of Squares (LMEDS)
+            method in OpenCV. If False, a least-squares approach is
+            used.
 
     Returns:
         ImageData: The aligned/transformed image.
@@ -283,14 +289,23 @@ def transform_image(
         raise ValueError("template.image is None")
     if keypairs is None:
         raise ValueError("keypairs is None")
-    if (not isinstance(keypairs, tuple)) or len(keypairs) != 2:
-        raise TypeError("keypairs must be [src_points, dst_points]")
+    if not isinstance(keypairs, tuple):
+        raise TypeError("keypairs must be a tuple")
+    if len(keypairs) != 2:
+        raise ValueError(
+            "keypairs must contain exactly two arrays: (src_points, dst_points)"
+        )
+
+    # Set method depending on outlier protection
+    method = 0
+    if outlier_protection:
+        method = cv2.LMEDS
 
     # Compute the homography matrix
     H, mask = cv2.findHomography(
         keypairs[0],
         keypairs[1],
-        method=cv2.LMEDS
+        method=method
     )
     # Use the homography matrix to transform the image
     h, w = template.image.shape[:2]

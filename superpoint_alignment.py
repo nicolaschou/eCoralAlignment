@@ -1,6 +1,12 @@
-import sys
+"""
+Author: Nico Chou
 
+Semi-automated image alignment pipeline using SuperPoint feature
+detection.
+"""
+import sys
 import tkinter as tk
+
 import cv2
 import numpy as np
 import torch

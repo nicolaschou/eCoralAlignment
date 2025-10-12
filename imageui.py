@@ -1,3 +1,9 @@
+"""
+Author: Nico Chou
+
+Matplotlib-based visualization and input utilities for interactive image
+alignment (area selection, keypoints, and debugging).
+"""
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np

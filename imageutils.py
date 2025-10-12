@@ -1,3 +1,9 @@
+"""
+Author: Nico Chou
+
+Image utilities and validation functions for loading, processing,
+transforming, and exporting images in the alignment pipeline.
+"""
 from pathlib import Path
 
 import cv2

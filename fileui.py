@@ -1,5 +1,10 @@
-from pathlib import Path
+"""
+Author: Nico Chou
 
+Tkinter-based GUI components for selecting, organizing, and managing
+image lists used in the alignment pipeline.
+"""
+from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 

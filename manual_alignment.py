@@ -1,5 +1,9 @@
-import sys
+"""
+Author: Nico Chou
 
+Manual image alignment pipeline using user-selected keypoints.
+"""
+import sys
 import tkinter as tk
 
 from fileui import AlignmentManager

@@ -1,3 +1,8 @@
+"""
+Author: Nico Chou
+
+Configuration dataclass for the SuperPoint image alignment pipeline.
+"""
 from dataclasses import dataclass
 
 

@@ -46,7 +46,10 @@ def superpoint_alignment() -> list:
     unaligned, templates, out_dir = run_alignment_manager(cfg)
 
     # Obtain areas for keypoint detection
-    set_keyareas(templates)
+    if templates:
+        set_keyareas([templates[0]])
+        for template in templates[1:]:
+            template.keyarea = templates[0].keyarea
     set_keyareas(unaligned)
 
     # Initialize a SuperPoint model
@@ -60,7 +63,7 @@ def superpoint_alignment() -> list:
         aligned = None
 
         if i == 0 and not templates:
-            # If there are no templates, set as the first template
+            # If there are no templates, consider first image as aligned
             aligned = ImageData(
                 image=unaligned[i].image,
                 filename=f"{cfg.aligned_prefix}{unaligned[i].filename}",
@@ -96,7 +99,7 @@ def superpoint_alignment() -> list:
             keypairs = (kptsI_all, kptsT_all)
 
             # Transform/align
-            template = unaligned[0] if not templates else templates[0]
+            template = templates[0]
             aligned = iu.transform_image(unaligned[i], template, keypairs, cfg)
             aligned.filename = f"{cfg.aligned_prefix}{unaligned[i].filename}"
 

@@ -301,6 +301,15 @@ def transform_image(
         raise ValueError(
             "keypairs must contain exactly two arrays: (src_points, dst_points)"
         )
+    
+    src_points, dst_points = keypairs
+    if src_points is None or dst_points is None:
+        raise ValueError("src_points and dst_points must not be None")
+    if len(src_points) < 4:
+        raise ValueError(
+            f"At least 4 point pairs are required to compute a homography; "
+            f"got {len(src_points)}"
+        )
 
     # Set method depending on outlier protection
     method = 0

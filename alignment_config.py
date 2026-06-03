@@ -45,7 +45,7 @@ class AlignmentConfig:
     aligned_prefix: str = "aligned_"
 
     # Alignment pipeline
-    max_comparisons: int = 15
+    max_comparisons: int = 10
 
     # Preprocessing
     clahe_clip_limit: float = 3.0

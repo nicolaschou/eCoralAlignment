@@ -11,10 +11,14 @@
 
 ## Requirements
 
-  - Python 3.9+
-  - Matplotlib, mpl-interactions, NumPy, OpenCV, PyQt5 or PyQt6, PyTorch 
+  - Python 3.12+ with Tkinter (included in python.org installers; Homebrew: `brew install python-tk`; Debian/Ubuntu: `sudo apt install python3-tk`)
+  - Matplotlib, mpl-interactions, NumPy, OpenCV, PyQt6, PyTorch (see [`requirements.txt`](./requirements.txt))
 
-    `pip install matplotlib mpl-interactions numpy opencv-python PyQt6 torch`
+    ```
+    python3 -m venv .venv
+    source .venv/bin/activate        # Windows: .venv\Scripts\activate
+    python -m pip install -r requirements.txt
+    ```
 
 
 ## `manual_alignment.py` Usage

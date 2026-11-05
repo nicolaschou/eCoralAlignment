@@ -1,0 +1,10 @@
+# Install into a virtual environment:
+#   python3 -m venv .venv && source .venv/bin/activate
+#   python -m pip install -r requirements.txt
+
+torch~=2.15
+opencv-python~=5.0
+numpy~=2.5
+matplotlib~=3.11
+mpl-interactions~=0.24
+PyQt6~=6.12

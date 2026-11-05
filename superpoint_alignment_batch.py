@@ -11,7 +11,6 @@ import time
 from tkinter import filedialog
 from dataclasses import dataclass
 from pathlib import Path
-from multiprocessing import Pool, cpu_count
 
 import cv2
 import numpy as np
@@ -59,16 +58,19 @@ def superpoint_alignment_job(job: AlignmentJob, cfg: AlignmentConfig) -> list:
         the provided images.
     """
 
-    # Load templates and unaligned images
+    # Load unaligned images, and work on a local copy of the templates
+    # so newly aligned images can be appended as comparison templates
+    # for later images without mutating job.templates
     unaligned = job.unaligned
-    templates = job.templates
-    out_dir = job.out_dir    
+    templates = list(job.templates)
+    out_dir = job.out_dir
 
     # Initialize a SuperPoint model
     superpoint = configure_superpoint(cfg)
 
-    # Store initial number of templates
-    num_temps = len(templates)
+    # Newly aligned images, returned separately from `templates` (which
+    # also accumulates them as comparison targets for later images)
+    aligned_images = []
 
     for i in range(len(unaligned)):
         print(f'Aligning "{unaligned[i].filename}"...')
@@ -112,19 +114,21 @@ def superpoint_alignment_job(job: AlignmentJob, cfg: AlignmentConfig) -> list:
 
             # Transform/align
             template = templates[0]
-            aligned = iu.transform_image(unaligned[i], template, keypairs, cfg)
+            aligned = iu.transform_image(unaligned[i], template, keypairs)
             aligned.filename = f"{cfg.aligned_prefix}{unaligned[i].filename}"
 
             # The keyarea of the aligned image is now the same as in the
             # template(s) it was aligned to
             aligned.keyarea = template.keyarea
 
-        # Store and export the aligned image
+        # Store as a comparison template for later images, and record it
+        # as a result of this run
         templates.append(aligned)
+        aligned_images.append(aligned)
         iu.export_image(aligned, out_dir)
 
     # Return list of newly aligned images
-    return templates[num_temps:]
+    return aligned_images
 
 
 def parse_files(cfg: AlignmentConfig) -> list[AlignmentJob]:
@@ -272,8 +276,9 @@ def configure_superpoint(
     ).eval()
 
     # Load weights into the SuperPoint model
-    weights = torch.load(cfg.weights_path)
+    weights = torch.load(cfg.weights_path, map_location=cfg.device)
     superpoint.load_state_dict(weights)
+    superpoint.to(cfg.device)
 
     return superpoint
 
@@ -371,6 +376,7 @@ def process_features(
         with torch.no_grad():
             # Convert np.ndarray into tensor [1, 1, H, W]
             tensor = torch.from_numpy(area_scaled[None, None]).float()
+            tensor = tensor.to(cfg.device)
             results = superpoint({"image": tensor})
 
         # Extract keypoints and descriptors
@@ -379,12 +385,6 @@ def process_features(
         kpts_rescaled += np.array([x1, y1])
         image.kpts = kpts_rescaled
         image.desc = results["descriptors"][0].cpu().numpy()
-
-
-def run_alignment_job(args):
-    """Execute a single alignment job."""
-    job, cfg = args
-    return superpoint_alignment_job(job, cfg)
 
 
 if __name__ == "__main__":
@@ -399,14 +399,10 @@ if __name__ == "__main__":
 
         if job.unaligned:
             set_keyareas(job.unaligned)
-    
+
     start = time.time()
 
-    with Pool(processes=min(2, len(a_jobs))) as pool:
-        results = pool.map(
-            run_alignment_job,
-            [(job, cfg) for job in a_jobs]
-        )
-    
+    results = [superpoint_alignment_job(job, cfg) for job in a_jobs]
+
     end = time.time()
     print("Runtime:", end - start, "seconds")

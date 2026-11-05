@@ -3,7 +3,18 @@ Author: Nico Chou
 
 Configuration dataclass for the SuperPoint image alignment pipeline.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+import torch
+
+
+def _default_device() -> str:
+    """Return the best available torch device: cuda > mps > cpu."""
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 @dataclass
@@ -16,6 +27,9 @@ class AlignmentConfig:
         weights_path (str): Path to the pretrained SuperPoint weights.
         aligned_prefix (str): Prefix added to filenames of aligned
             images.
+        device (str): Torch device the SuperPoint model and its inputs
+            are placed on ("cuda", "mps", or "cpu"). Defaults to the
+            best available device.
 
         max_comparisons (int): Maximum number of template images to
             compare against when aligning a new unaligned image.
@@ -43,6 +57,9 @@ class AlignmentConfig:
     # File management
     weights_path: str = "superpoint/superpoint_v6_from_tf.pth"
     aligned_prefix: str = "aligned_"
+
+    # Compute
+    device: str = field(default_factory=_default_device)
 
     # Alignment pipeline
     max_comparisons: int = 10

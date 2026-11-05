@@ -45,6 +45,11 @@ def superpoint_alignment() -> list:
     # Load templates and unaligned images
     unaligned, templates, out_dir = run_alignment_manager(cfg)
 
+    # Work on a local copy so newly aligned images can be appended as
+    # comparison templates for later images without mutating the list
+    # returned by the alignment manager
+    templates = list(templates)
+
     # Obtain areas for keypoint detection
     if templates:
         set_keyareas([templates[0]])
@@ -55,8 +60,9 @@ def superpoint_alignment() -> list:
     # Initialize a SuperPoint model
     superpoint = configure_superpoint(cfg)
 
-    # Store initial number of templates
-    num_temps = len(templates)
+    # Newly aligned images, returned separately from `templates` (which
+    # also accumulates them as comparison targets for later images)
+    aligned_images = []
 
     for i in range(len(unaligned)):
         print(f'Aligning "{unaligned[i].filename}"...')
@@ -100,19 +106,21 @@ def superpoint_alignment() -> list:
 
             # Transform/align
             template = templates[0]
-            aligned = iu.transform_image(unaligned[i], template, keypairs, cfg)
+            aligned = iu.transform_image(unaligned[i], template, keypairs)
             aligned.filename = f"{cfg.aligned_prefix}{unaligned[i].filename}"
 
             # The keyarea of the aligned image is now the same as in the
             # template(s) it was aligned to
             aligned.keyarea = template.keyarea
 
-        # Store and export the aligned image
+        # Store as a comparison template for later images, and record it
+        # as a result of this run
         templates.append(aligned)
+        aligned_images.append(aligned)
         iu.export_image(aligned, out_dir)
 
     # Return list of newly aligned images
-    return templates[num_temps:]
+    return aligned_images
 
 
 def run_alignment_manager(cfg: AlignmentConfig) -> tuple:
@@ -170,8 +178,9 @@ def configure_superpoint(
     ).eval()
 
     # Load weights into the SuperPoint model
-    weights = torch.load(cfg.weights_path)
+    weights = torch.load(cfg.weights_path, map_location=cfg.device)
     superpoint.load_state_dict(weights)
+    superpoint.to(cfg.device)
 
     return superpoint
 
@@ -269,6 +278,7 @@ def process_features(
         with torch.no_grad():
             # Convert np.ndarray into tensor [1, 1, H, W]
             tensor = torch.from_numpy(area_scaled[None, None]).float()
+            tensor = tensor.to(cfg.device)
             results = superpoint({"image": tensor})
 
         # Extract keypoints and descriptors

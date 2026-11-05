@@ -34,23 +34,23 @@ def manual_alignment() -> list:
     results = []
 
     # Collect keypoints for the template image
-    template.keypoints = get_keypoints(template, num_points)
-    if template.keypoints is None:
+    template.kpts = get_keypoints(template, num_points)
+    if template.kpts is None:
         print(
             "Plot closed before keypoints were selected. Exiting program."
         )
         sys.exit(0)
-    
+
     # Align each image
     for image in unaligned:
-        tmp_fig, tmp_ax = template_plot(template, template.keypoints)
-        image.keypoints = get_keypoints(image, num_points, tmp_fig)
-        if image.keypoints is None:
+        tmp_fig, tmp_ax = template_plot(template, template.kpts)
+        image.kpts = get_keypoints(image, num_points, tmp_fig)
+        if image.kpts is None:
             print(
                 "Plot closed before keypoints were selected. Exiting program."
             )
             sys.exit(0)
-        keypairs = (image.keypoints, template.keypoints)
+        keypairs = (image.kpts, template.kpts)
         aligned = iu.transform_image(image, template, keypairs, False)
         aligned.filename = f"{aligned_prefix}{image.filename}"
 

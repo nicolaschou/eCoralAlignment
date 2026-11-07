@@ -63,7 +63,9 @@ class ImageData:
 
     Attributes:
         image (np.ndarray | None): The image data as a numpy array
-            (BGR). Defaults to None.
+            (BGR). If this object was created with a `path` and no
+            `image` was given directly, the array is decoded from disk
+            lazily on first access. Defaults to None.
         filename (str | None): The name of the image file. Defaults to
             None.
         processed (np.ndarray | None): Processed version of the image
@@ -81,6 +83,7 @@ class ImageData:
         self,
         image: np.ndarray | None = None,
         filename: str | None = None,
+        path: Path | None = None,
         processed: np.ndarray | None = None,
         keyarea: np.ndarray | None = None,
         kpts: np.ndarray | None = None,
@@ -94,6 +97,9 @@ class ImageData:
                 array (BGR). Defaults to None.
             filename (str, optional): The name of the image file.
                 Defaults to None.
+            path (Path, optional): Path to decode `image` from on first
+                access, if `image` is not given directly. Defaults to
+                None.
             processed (np.ndarray, optional): Processed version of the
                 image used for keypoint detection (grayscale). Defaults
                 to None.
@@ -106,6 +112,7 @@ class ImageData:
                 correspond to detected features (shape: [N, 256]).
                 Defaults to None.
         """
+        self._path = path
         self.image = image
         self.filename = filename
         self.processed = processed
@@ -116,6 +123,11 @@ class ImageData:
     # Getters and Setters ----------------------------------------------
     @property
     def image(self) -> np.ndarray | None:
+        if self._image is None and self._path is not None:
+            raw = cv2.imread(str(self._path), cv2.IMREAD_COLOR)
+            if raw is None:
+                raise OSError(f"Failed to read image: {self._path}")
+            self._image = check_bgr(raw, "image")
         return self._image
 
     @image.setter
@@ -185,6 +197,16 @@ class ImageData:
     def __str__(self):
         """Return the image filename, or an empty string if unset."""
         return self.filename if self.filename is not None else ""
+
+    def release_image(self):
+        """
+        Drop the decoded `image` to free memory, if it can be reloaded
+        from `_path` later. No-op otherwise, since an image built from
+        an in-memory array only (e.g. a warped alignment result) would
+        be lost for good.
+        """
+        if self._path is not None:
+            self._image = None
 
     def process_image(self, cfg: AlignmentConfig):
         """
@@ -332,14 +354,19 @@ def transform_image(
 
 def load_image(path_str: str) -> ImageData:
     """
-    Load an image from disk and return it as an ImageData object.
+    Return an ImageData object for an image file on disk.
+
+    The file's existence and extension are validated immediately, but
+    its pixel data is not decoded until the returned object's `.image`
+    attribute is first accessed.
 
     Args:
         path_str (str): Path to the image file. Must be a string with a
             supported image file extension.
 
     Returns:
-        ImageData: The loaded image in BGR format (shape: [H, W, 3]).
+        ImageData: An image backed by `path_str`, decoded lazily in BGR
+        format (shape: [H, W, 3]).
     """
     # Validate the path
     path_str = check_string(path_str, "path_str")
@@ -348,12 +375,7 @@ def load_image(path_str: str) -> ImageData:
     if not path.is_file():
         raise FileNotFoundError(f"No such file: {path}")
 
-    raw = cv2.imread(path_str, cv2.IMREAD_COLOR)
-    if raw is None:
-        raise OSError(f"Failed to read image: {path_str}")
-
-    image = ImageData(raw, path.name)
-    return image
+    return ImageData(filename=path.name, path=path)
 
 
 def export_image(image: ImageData, out_dir: str | None) -> str | None:

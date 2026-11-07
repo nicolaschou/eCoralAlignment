@@ -127,6 +127,12 @@ def superpoint_alignment_job(job: AlignmentJob, cfg: AlignmentConfig) -> list:
         aligned_images.append(aligned)
         iu.export_image(aligned, out_dir)
 
+        # Release the pixel data of any template that just fell outside
+        # the sliding comparison window; it won't be matched against again
+        drop_index = len(templates) - cfg.max_comparisons - 1
+        if drop_index >= 0:
+            templates[drop_index].release_image()
+
     # Return list of newly aligned images
     return aligned_images
 
@@ -363,12 +369,14 @@ def process_features(
             SuperPoint model.
         cfg (AlignmentConfig): Parameters for preprocessing and feature
             detection.
-    """
-    if image.processed is None:
-        image.process_image(cfg)
 
+    `image.processed` is freed once keypoints/descriptors have been
+    extracted from it, since it is not needed again afterward.
+    """
     x1, y1, x2, y2 = image.keyarea
     if image.kpts is None or image.desc is None:
+        if image.processed is None:
+            image.process_image(cfg)
 
         # Detect features in keyarea
         img_area = image.processed[y1:y2, x1:x2] / 255.0  # normalize
@@ -385,6 +393,9 @@ def process_features(
         kpts_rescaled += np.array([x1, y1])
         image.kpts = kpts_rescaled
         image.desc = results["descriptors"][0].cpu().numpy()
+
+        # No longer needed now that kpts/desc are cached
+        image.processed = None
 
 
 if __name__ == "__main__":
